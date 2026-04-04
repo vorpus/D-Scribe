@@ -13,6 +13,9 @@ final class MicCapture: @unchecked Sendable {
     /// Called on a background thread with a chunk of 16 kHz mono Float32 samples.
     nonisolated(unsafe) var onAudio: (([Float]) -> Void)?
 
+    /// When true, delivers silence instead of mic audio (keeps engine running for instant unmute).
+    var muted: Bool = false
+
     private var engine: AVAudioEngine?
 
     /// Desired output format: 16 kHz, mono, Float32.
@@ -99,7 +102,12 @@ final class MicCapture: @unchecked Sendable {
         // Extract Float32 samples from the converted buffer.
         guard let channelData = outputBuffer.floatChannelData else { return }
         let frameLength = Int(outputBuffer.frameLength)
-        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameLength))
+        var samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameLength))
+
+        // Zero out audio when muted (keeps engine running for instant unmute).
+        if muted {
+            samples = [Float](repeating: 0, count: frameLength)
+        }
 
         // Throttled logging: ~1 per second assuming ~16000 samples/sec.
         tapCallbackCount += frameLength

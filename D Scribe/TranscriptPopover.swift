@@ -6,9 +6,14 @@
 //
 
 import SwiftUI
+import Combine
 
 struct TranscriptPopover: View {
     @Bindable var appState: AppState
+    @State private var showSettings = false
+    @State private var now = Date()
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,10 +39,10 @@ struct TranscriptPopover: View {
 
             Divider()
 
-            // Transcript lines
+            // Transcript lines or status
             if appState.transcriptLines.isEmpty {
                 Spacer()
-                Text(appState.isModelLoading ? "Loading model..." : appState.statusText)
+                Text(appState.statusText)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -76,7 +81,7 @@ struct TranscriptPopover: View {
             Divider()
 
             // Controls
-            HStack {
+            HStack(spacing: 12) {
                 Button(appState.isRecording ? "Stop" : "Start") {
                     if appState.isRecording {
                         appState.stopRecording()
@@ -87,31 +92,67 @@ struct TranscriptPopover: View {
                 .keyboardShortcut(.return, modifiers: [])
                 .disabled(appState.isModelLoading)
 
+                if appState.isRecording {
+                    Button {
+                        appState.toggleMute()
+                    } label: {
+                        Image(systemName: appState.isMuted ? "mic.slash.fill" : "mic.fill")
+                        Text(appState.isMuted ? "Unmute" : "Mute")
+                    }
+
+                    Text("Cmd+D")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
                 Spacer()
 
-                if appState.isRecording, !appState.outputPath.isEmpty {
-                    Text(appState.outputPath)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
+                if !appState.hasAccessibility {
+                    Button {
+                        appState.promptAccessibility()
+                    } label: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                        Text("Enable global hotkey")
+                            .font(.caption2)
+                    }
+                    .help("Grant Accessibility permission for Cmd+D to work globally")
                 }
+
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .foregroundStyle(.secondary)
+                }
+                .disabled(appState.isRecording)
+                .help("Settings")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
         .frame(width: 400, height: 300)
+        .sheet(isPresented: $showSettings) {
+            SettingsView(appState: appState)
+        }
+        .onReceive(timer) { now = $0 }
     }
 
     private var statusDot: some View {
         Circle()
-            .fill(appState.isSpeechDetected ? Color.orange : Color.red)
+            .fill(dotColor)
             .frame(width: 8, height: 8)
+    }
+
+    private var dotColor: Color {
+        if appState.isMuted { return .yellow }
+        if appState.isSpeechDetected { return .orange }
+        return .red
     }
 
     private var sessionDuration: String {
         guard let start = appState.sessionStart else { return "" }
-        let elapsed = Int(Date().timeIntervalSince(start))
+        let elapsed = Int(now.timeIntervalSince(start))
         return "\(elapsed / 60)m \(elapsed % 60)s"
     }
 }
