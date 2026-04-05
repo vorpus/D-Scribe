@@ -12,7 +12,15 @@ struct D_ScribeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        Settings { EmptyView() }
+        WindowGroup {
+            MainView(appState: appDelegate.appState)
+                .frame(minWidth: 800, minHeight: 500)
+        }
+        .defaultSize(width: 1000, height: 650)
+
+        Settings {
+            SettingsView(appState: appDelegate.appState)
+        }
     }
 }
 
@@ -20,35 +28,29 @@ struct D_ScribeApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
     let appState = AppState()
     private var globalHotkeyMonitor: Any?
     private var localHotkeyMonitor: Any?
     private var iconTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApplication.shared.setActivationPolicy(.accessory)
-
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "D Scribe")
-            button.action = #selector(togglePopover(_:))
-            button.target = self
         }
 
-        popover.contentSize = NSSize(width: 400, height: 300)
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: TranscriptPopover(appState: appState))
+        buildMenu()
 
-        // Local hotkey: Cmd+D when app/popover is focused.
+        // Local hotkey: Cmd+D when app is focused.
         localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             if event.modifierFlags.contains(.command) && event.keyCode == 2 {
                 guard self.appState.isRecording else { return event }
                 self.appState.toggleMute()
                 self.updateIcon()
-                return nil  // consume the event
+                self.buildMenu()
+                return nil
             }
             return event
         }
@@ -83,11 +85,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     guard self.appState.isRecording else { return }
                     self.appState.toggleMute()
                     self.updateIcon()
+                    self.buildMenu()
                 }
             }
         }
         print("[AppDelegate] Global hotkey registered")
     }
+
+    // MARK: - Menu Bar Menu
+
+    private func buildMenu() {
+        let menu = NSMenu()
+
+        let openItem = NSMenuItem(title: "Open D Scribe", action: #selector(openMainWindow), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        if appState.isRecording {
+            let muteTitle = appState.isMuted ? "Unmute" : "Mute"
+            let muteItem = NSMenuItem(title: muteTitle, action: #selector(toggleMuteFromMenu), keyEquivalent: "")
+            muteItem.target = self
+            menu.addItem(muteItem)
+            menu.addItem(NSMenuItem.separator())
+        }
+
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+    }
+
+    @objc private func openMainWindow() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if let window = NSApplication.shared.windows.first(where: { $0.title != "" || $0.contentView is NSHostingView<MainView> }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    @objc private func toggleMuteFromMenu() {
+        appState.toggleMute()
+        updateIcon()
+        buildMenu()
+    }
+
+    // MARK: - Icon
 
     private func updateIcon() {
         guard let button = statusItem.button else { return }
@@ -111,16 +154,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             .withSymbolConfiguration(config) {
             let coloredImage = image.tinted(with: color)
             button.image = coloredImage
-        }
-    }
-
-    @objc private func togglePopover(_ sender: AnyObject?) {
-        guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
         }
     }
 }

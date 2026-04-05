@@ -7,6 +7,7 @@
 
 import AppKit
 import ApplicationServices
+import AVFoundation
 import Foundation
 import Observation
 
@@ -39,6 +40,15 @@ final class AppState {
     var isModelLoading = false
     var systemAudioActive = false
     var hasAccessibility = false
+    var hasMicrophone = false
+    var hasAudioCapture = false
+
+    // MARK: - File Browser State
+
+    var selectedFile: URL?
+    var fileList: [URL] = []
+    /// The file currently being recorded to (nil when not recording)
+    var activeRecordingFile: URL?
 
     // MARK: - Settings (persisted via UserDefaults)
 
@@ -102,9 +112,40 @@ final class AppState {
         print("[AppState] Accessibility prompt result: \(result)")
     }
 
-    func openAccessibilitySettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-        NSWorkspace.shared.open(url)
+    func checkMicrophone() {
+        let status = AVAudioApplication.shared.recordPermission
+        hasMicrophone = status == .granted
+    }
+
+    func requestMicrophone() {
+        AVAudioApplication.requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                self.hasMicrophone = granted
+            }
+        }
+    }
+
+    func checkAudioCapture() {
+        // System audio capture permission is the same mic/record permission on macOS.
+        // The NSAudioCaptureUsageDescription entitlement gates the Core Audio Tap,
+        // but the runtime check is the same record permission.
+        let status = AVAudioApplication.shared.recordPermission
+        hasAudioCapture = status == .granted
+    }
+
+    func requestAudioCapture() {
+        AVAudioApplication.requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                self.hasAudioCapture = granted
+            }
+        }
+    }
+
+    /// Check all permissions at once.
+    func checkAllPermissions() {
+        checkAccessibility()
+        checkMicrophone()
+        checkAudioCapture()
     }
 
     // MARK: - Mute
@@ -118,6 +159,10 @@ final class AppState {
     // MARK: - Recording
 
     func startRecording() {
+        // Clear previous session's live lines.
+        transcriptLines = []
+        lineCount = 0
+
         Task {
             do {
                 // Create engine with current language setting.
@@ -199,6 +244,9 @@ final class AppState {
                 micCapture.muted = false
                 sessionStart = Date()
                 statusText = "Listening..."
+                activeRecordingFile = w.outputPath
+                selectedFile = w.outputPath
+                refreshFileList()
             } catch {
                 isRecording = false
                 isModelLoading = false
@@ -214,16 +262,27 @@ final class AppState {
         micVAD?.flushRemaining()
         meetingVAD?.flushRemaining()
 
+        // Capture references before niling so the flush task can finish.
+        let currentWriter = writer
+        let currentQueue = transcriptionQueue
+
+        // Clear immediately so a new recording doesn't reuse stale objects.
+        writer = nil
+        transcriptionQueue = nil
+        micVAD = nil
+        meetingVAD = nil
+
         Task {
+            // Wait for any in-flight transcriptions to finish.
             try? await Task.sleep(for: .seconds(1))
             await MainActor.run {
-                writer?.finalize()
-                let path = writer?.outputPath.path ?? ""
-                let count = writer?.lineCount ?? 0
+                currentWriter?.finalize()
+                let path = currentWriter?.outputPath.path ?? ""
+                let count = currentWriter?.lineCount ?? 0
                 print("[AppState] Saved to \(path) — \(count) lines")
-                writer = nil
-                transcriptionQueue = nil
+                refreshFileList()
             }
+            _ = currentQueue // keep alive until finalized
         }
 
         isRecording = false
@@ -232,6 +291,8 @@ final class AppState {
         systemAudioActive = false
         statusText = "Idle"
         sessionStart = nil
+        activeRecordingFile = nil
+        refreshFileList()
     }
 
     private func handleTranscription(_ result: TranscriptionQueue.Result) {
@@ -239,14 +300,56 @@ final class AppState {
         transcriptLines.append(line)
         lineCount = transcriptLines.count
 
-        if transcriptLines.count > 50 {
-            transcriptLines.removeFirst(transcriptLines.count - 50)
-        }
-
         writer?.writeLine(label: result.label, timestamp: result.timestamp, text: result.text)
 
         if isRecording && !isMuted {
             statusText = "Listening..."
         }
+    }
+
+    // MARK: - File Browser
+
+    /// Scan the output directory for .md transcript files, sorted newest first.
+    func refreshFileList() {
+        let dir = (outputDirectory as NSString).expandingTildeInPath
+        let dirURL = URL(fileURLWithPath: dir)
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: dirURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            fileList = []
+            return
+        }
+
+        fileList = contents
+            .filter { $0.pathExtension == "md" }
+            .sorted { a, b in
+                // Sort by filename descending (filenames are date-based: YYYY-MM-DD_HH-MM.md)
+                a.lastPathComponent > b.lastPathComponent
+            }
+    }
+
+    /// Parse a transcript .md file into TranscriptLine array.
+    static func parseTranscriptFile(_ url: URL) -> [TranscriptLine] {
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+
+        let linePattern = /^\[(\d{2}:\d{2}:\d{2})\] (YOU|MEETING): (.+)$/
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+
+        var result: [TranscriptLine] = []
+        for line in content.components(separatedBy: "\n") {
+            if let match = line.wholeMatch(of: linePattern) {
+                let timeStr = String(match.1)
+                let label = String(match.2)
+                let text = String(match.3)
+                let timestamp = formatter.date(from: timeStr) ?? Date()
+                result.append(TranscriptLine(label: label, timestamp: timestamp, text: text))
+            }
+        }
+        return result
     }
 }

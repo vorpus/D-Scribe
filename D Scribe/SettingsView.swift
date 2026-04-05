@@ -9,18 +9,36 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var appState: AppState
-    @Environment(\.dismiss) private var dismiss
+
+    @State private var pollingTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.headline)
+        Form {
+            Section("Permissions") {
+                PermissionRow(
+                    name: "Microphone",
+                    detail: "Required for transcribing your voice",
+                    granted: appState.hasMicrophone,
+                    action: { appState.requestMicrophone() }
+                )
 
-            // Language
-            HStack {
-                Text("Language")
-                    .frame(width: 100, alignment: .leading)
-                Picker("", selection: Binding(
+                PermissionRow(
+                    name: "Audio Capture",
+                    detail: "Required for capturing system/meeting audio",
+                    granted: appState.hasAudioCapture,
+                    action: { appState.requestAudioCapture() }
+                )
+
+                PermissionRow(
+                    name: "Accessibility",
+                    detail: "Required for global Cmd+D mute hotkey",
+                    granted: appState.hasAccessibility,
+                    action: { appState.promptAccessibility() }
+                )
+            }
+
+            Section("Transcription") {
+                Picker("Language", selection: Binding(
                     get: { appState.language },
                     set: { appState.language = $0 }
                 )) {
@@ -32,56 +50,91 @@ struct SettingsView: View {
                     Text("French").tag("fr")
                     Text("German").tag("de")
                 }
-                .labelsHidden()
-                .frame(width: 120)
-            }
 
-            // Output directory
-            HStack {
-                Text("Output")
-                    .frame(width: 100, alignment: .leading)
-                TextField("~/transcripts", text: Binding(
+                TextField("Output", text: Binding(
                     get: { appState.outputDirectory },
                     set: { appState.outputDirectory = $0 }
                 ))
-                .textFieldStyle(.roundedBorder)
-            }
 
-            // VAD threshold
-            HStack {
-                Text("VAD threshold")
-                    .frame(width: 100, alignment: .leading)
-                Slider(value: Binding(
-                    get: { appState.vadThreshold },
-                    set: { appState.vadThreshold = $0 }
-                ), in: 0.1...0.95, step: 0.05)
-                Text(String(format: "%.2f", appState.vadThreshold))
-                    .monospacedDigit()
-                    .frame(width: 40)
-            }
+                HStack {
+                    Slider(value: Binding(
+                        get: { appState.vadThreshold },
+                        set: { appState.vadThreshold = $0 }
+                    ), in: 0.1...0.95, step: 0.05)
+                    Text(String(format: "%.2f", appState.vadThreshold))
+                        .monospacedDigit()
+                        .frame(width: 40)
+                }
+                .formLabel("VAD threshold")
 
-            // Silence duration
-            HStack {
-                Text("Silence (ms)")
-                    .frame(width: 100, alignment: .leading)
-                Slider(value: Binding(
-                    get: { Float(appState.silenceMs) },
-                    set: { appState.silenceMs = Int($0) }
-                ), in: 200...2000, step: 100)
-                Text("\(appState.silenceMs)")
-                    .monospacedDigit()
-                    .frame(width: 40)
-            }
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.return, modifiers: [])
+                HStack {
+                    Slider(value: Binding(
+                        get: { Float(appState.silenceMs) },
+                        set: { appState.silenceMs = Int($0) }
+                    ), in: 200...2000, step: 100)
+                    Text("\(appState.silenceMs) ms")
+                        .monospacedDigit()
+                        .frame(width: 60)
+                }
+                .formLabel("Silence duration")
             }
         }
-        .padding(20)
-        .frame(width: 360, height: 280)
+        .formStyle(.grouped)
+        .frame(width: 450)
+        .onAppear {
+            appState.checkAllPermissions()
+            pollingTask = Task { @MainActor in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    appState.checkAllPermissions()
+                }
+            }
+        }
+        .onDisappear {
+            pollingTask?.cancel()
+            pollingTask = nil
+        }
+    }
+}
+
+// MARK: - Permission Row
+
+struct PermissionRow: View {
+    let name: String
+    let detail: String
+    let granted: Bool
+    let action: () -> Void
+
+    var body: some View {
+        LabeledContent {
+            if granted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            } else {
+                Button("Grant") { action() }
+                    .controlSize(.small)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(name)
+                    if !granted {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption)
+                    }
+                }
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// Helper for custom form labels on HStack rows
+extension View {
+    func formLabel(_ label: String) -> some View {
+        LabeledContent(label) { self }
     }
 }
