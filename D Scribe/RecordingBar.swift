@@ -29,16 +29,15 @@ struct RecordingBar: View {
 
     private var idleContent: some View {
         barChrome(tint: .clear) {
-            Button { appState.startRecording() } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "record.circle")
-                        .font(.system(size: 16))
-                        .foregroundColor(.red)
-                    Text("Record")
-                        .font(.system(size: 14))
-                }
+            HStack(spacing: 6) {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(.red)
+                Text("Record")
+                    .font(.system(size: 14))
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .onTapGesture { appState.startRecording() }
         }
     }
 

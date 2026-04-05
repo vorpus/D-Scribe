@@ -32,10 +32,14 @@ struct SettingsView: View {
 
                 PermissionRow(
                     name: "Accessibility",
-                    detail: "Required for global Cmd+D mute hotkey",
+                    detail: "Required for global hotkeys",
                     granted: appState.hasAccessibility,
                     action: { appState.promptAccessibility() }
                 )
+            }
+
+            Section("Hotkey") {
+                HotkeyRecorderRow(appState: appState)
             }
 
             Section("Transcription") {
@@ -165,6 +169,89 @@ struct PermissionRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - Hotkey Recorder
+
+struct HotkeyRecorderRow: View {
+    @Bindable var appState: AppState
+    @State private var isRecording = false
+
+    var body: some View {
+        LabeledContent("Toggle Mute") {
+            Button {
+                isRecording = true
+            } label: {
+                if isRecording {
+                    Text("Press a key…")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(appState.hotkeyDisplayString)
+                        .monospacedDigit()
+                }
+            }
+            .buttonStyle(.bordered)
+            .frame(minWidth: 80)
+            .background {
+                if isRecording {
+                    HotkeyCapture { keyCode, modifiers in
+                        appState.hotkeyKeyCode = keyCode
+                        appState.hotkeyModifiers = modifiers.rawValue
+                        isRecording = false
+                        // Re-register hotkey monitors with new key.
+                        NotificationCenter.default.post(name: .hotkeyDidChange, object: nil)
+                    } onCancel: {
+                        isRecording = false
+                    }
+                }
+            }
+        }
+    }
+}
+
+extension Notification.Name {
+    static let hotkeyDidChange = Notification.Name("hotkeyDidChange")
+}
+
+/// Invisible NSView that captures the next key press for hotkey recording.
+struct HotkeyCapture: NSViewRepresentable {
+    let onCapture: (UInt16, NSEvent.ModifierFlags) -> Void
+    let onCancel: () -> Void
+
+    func makeNSView(context: Context) -> HotkeyCaptureView {
+        let view = HotkeyCaptureView()
+        view.onCapture = onCapture
+        view.onCancel = onCancel
+        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: HotkeyCaptureView, context: Context) {
+        nsView.onCapture = onCapture
+        nsView.onCancel = onCancel
+    }
+}
+
+class HotkeyCaptureView: NSView {
+    var onCapture: ((UInt16, NSEvent.ModifierFlags) -> Void)?
+    var onCancel: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        // Escape cancels
+        if event.keyCode == 53 {
+            onCancel?()
+            return
+        }
+        let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        onCapture?(event.keyCode, mods)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        onCancel?()
+        return super.resignFirstResponder()
     }
 }
 

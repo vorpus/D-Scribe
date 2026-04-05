@@ -8,6 +8,7 @@
 import AppKit
 import ApplicationServices
 import AVFoundation
+import Carbon.HIToolbox
 import Foundation
 import Observation
 
@@ -77,6 +78,61 @@ final class AppState {
 
     var silenceMs: Int = UserDefaults.standard.object(forKey: "silenceMs") as? Int ?? 800 {
         didSet { UserDefaults.standard.set(silenceMs, forKey: "silenceMs") }
+    }
+
+    // MARK: - Hotkey
+
+    /// The key code for the global record/mute hotkey.
+    var hotkeyKeyCode: UInt16 = UInt16(UserDefaults.standard.integer(forKey: "hotkeyKeyCode") == 0 ? 2 : UserDefaults.standard.integer(forKey: "hotkeyKeyCode")) {
+        didSet { UserDefaults.standard.set(Int(hotkeyKeyCode), forKey: "hotkeyKeyCode") }
+    }
+
+    /// The modifier flags for the global hotkey (stored as raw value).
+    var hotkeyModifiers: UInt = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? UInt ?? NSEvent.ModifierFlags.command.rawValue {
+        didSet { UserDefaults.standard.set(hotkeyModifiers, forKey: "hotkeyModifiers") }
+    }
+
+    /// Human-readable string for the current hotkey.
+    var hotkeyDisplayString: String {
+        var parts: [String] = []
+        let flags = NSEvent.ModifierFlags(rawValue: hotkeyModifiers)
+        if flags.contains(.control) { parts.append("⌃") }
+        if flags.contains(.option) { parts.append("⌥") }
+        if flags.contains(.shift) { parts.append("⇧") }
+        if flags.contains(.command) { parts.append("⌘") }
+        parts.append(Self.keyCodeToString(hotkeyKeyCode))
+        return parts.joined()
+    }
+
+    /// Convert a key code to a displayable character.
+    static func keyCodeToString(_ keyCode: UInt16) -> String {
+        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        guard let layoutDataRef = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return "?"
+        }
+        let layoutData = unsafeBitCast(layoutDataRef, to: CFData.self) as Data
+        var deadKeyState: UInt32 = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        var length = 0
+        layoutData.withUnsafeBytes { rawBuf in
+            let ptr = rawBuf.baseAddress!.assumingMemoryBound(to: UCKeyboardLayout.self)
+            UCKeyTranslate(
+                ptr,
+                keyCode,
+                UInt16(kUCKeyActionDisplay),
+                0,
+                UInt32(LMGetKbdType()),
+                UInt32(kUCKeyTranslateNoDeadKeysBit),
+                &deadKeyState,
+                chars.count,
+                &length,
+                &chars
+            )
+        }
+        if length > 0 {
+            return String(utf16CodeUnits: chars, count: length).uppercased()
+        }
+        return "?"
     }
 
     // MARK: - Private

@@ -52,6 +52,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalHotkeyMonitor: Any?
     private var localHotkeyMonitor: Any?
     private var iconTimer: Timer?
+    private var hotkeyChangeObserver: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -61,11 +62,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         buildMenu()
+        registerHotkeyMonitors()
 
-        // Local hotkey: Cmd+D when app is focused.
+        // Poll icon state and re-check accessibility periodically.
+        iconTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateIcon()
+            self?.registerGlobalHotkeyIfNeeded()
+        }
+
+        // Re-register hotkeys when the user changes the hotkey in settings.
+        hotkeyChangeObserver = NotificationCenter.default.addObserver(
+            forName: .hotkeyDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.registerHotkeyMonitors()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let m = globalHotkeyMonitor { NSEvent.removeMonitor(m) }
+        if let m = localHotkeyMonitor { NSEvent.removeMonitor(m) }
+        if let o = hotkeyChangeObserver { NotificationCenter.default.removeObserver(o) }
+        iconTimer?.invalidate()
+        if appState.isRecording {
+            appState.stopRecording()
+        }
+    }
+
+    private func registerHotkeyMonitors() {
+        // Remove existing monitors.
+        if let m = localHotkeyMonitor { NSEvent.removeMonitor(m); localHotkeyMonitor = nil }
+        if let m = globalHotkeyMonitor { NSEvent.removeMonitor(m); globalHotkeyMonitor = nil }
+
+        let keyCode = appState.hotkeyKeyCode
+        let modifiers = NSEvent.ModifierFlags(rawValue: appState.hotkeyModifiers)
+
+        // Local hotkey when app is focused.
         localHotkeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.modifierFlags.contains(.command) && event.keyCode == 2 {
+            if event.keyCode == keyCode && event.modifierFlags.intersection([.command, .control, .option, .shift]) == modifiers {
                 guard self.appState.isRecording else { return event }
                 self.appState.toggleMute()
                 self.updateIcon()
@@ -77,30 +111,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Try to register global hotkey (needs Accessibility).
         registerGlobalHotkeyIfNeeded()
-
-        // Poll icon state and re-check accessibility periodically.
-        iconTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.updateIcon()
-            self?.registerGlobalHotkeyIfNeeded()
-        }
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        if let m = globalHotkeyMonitor { NSEvent.removeMonitor(m) }
-        if let m = localHotkeyMonitor { NSEvent.removeMonitor(m) }
-        iconTimer?.invalidate()
-        if appState.isRecording {
-            appState.stopRecording()
-        }
     }
 
     private func registerGlobalHotkeyIfNeeded() {
         appState.checkAccessibility()
         guard appState.hasAccessibility, globalHotkeyMonitor == nil else { return }
 
+        let keyCode = appState.hotkeyKeyCode
+        let modifiers = NSEvent.ModifierFlags(rawValue: appState.hotkeyModifiers)
+
         globalHotkeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return }
-            if event.modifierFlags.contains(.command) && event.keyCode == 2 {
+            if event.keyCode == keyCode && event.modifierFlags.intersection([.command, .control, .option, .shift]) == modifiers {
                 DispatchQueue.main.async {
                     guard self.appState.isRecording else { return }
                     self.appState.toggleMute()
@@ -109,7 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
-        print("[AppDelegate] Global hotkey registered")
+        print("[AppDelegate] Global hotkey registered: \(appState.hotkeyDisplayString)")
     }
 
     // MARK: - Menu Bar Menu
