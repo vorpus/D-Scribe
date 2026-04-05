@@ -17,6 +17,26 @@ struct D_ScribeApp: App {
                 .frame(minWidth: 800, minHeight: 500)
         }
         .defaultSize(width: 1000, height: 650)
+        .commands {
+            CommandGroup(after: .toolbar) {
+                Button("Increase Font Size") {
+                    let s = appDelegate.appState
+                    s.transcriptFontSize = min(s.transcriptFontSize + 1, AppState.maxFontSize)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+
+                Button("Decrease Font Size") {
+                    let s = appDelegate.appState
+                    s.transcriptFontSize = max(s.transcriptFontSize - 1, AppState.minFontSize)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+
+                Button("Reset Font Size") {
+                    appDelegate.appState.transcriptFontSize = AppState.defaultFontSize
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
+        }
 
         Settings {
             SettingsView(appState: appDelegate.appState)

@@ -124,13 +124,14 @@ struct SidebarRow: View {
             guard !isActive else { return }
             showDeleteConfirmation = true
         }
-        .confirmationDialog(
+        .alert(
             "Move \"\(displayName)\" to Trash?",
             isPresented: $showDeleteConfirmation
         ) {
             Button("Move to Trash", role: .destructive) {
                 onDelete()
             }
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {}
         }
     }

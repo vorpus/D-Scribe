@@ -64,6 +64,14 @@ final class AppState {
         didSet { UserDefaults.standard.set(vadThreshold, forKey: "vadThreshold") }
     }
 
+    var transcriptFontSize: CGFloat = UserDefaults.standard.object(forKey: "transcriptFontSize") as? CGFloat ?? 13 {
+        didSet { UserDefaults.standard.set(transcriptFontSize, forKey: "transcriptFontSize") }
+    }
+
+    static let defaultFontSize: CGFloat = 13
+    static let minFontSize: CGFloat = 9
+    static let maxFontSize: CGFloat = 28
+
     var silenceMs: Int = UserDefaults.standard.object(forKey: "silenceMs") as? Int ?? 800 {
         didSet { UserDefaults.standard.set(silenceMs, forKey: "silenceMs") }
     }
@@ -77,16 +85,19 @@ final class AppState {
     private var whisperEngine: WhisperEngine?
     private var transcriptionQueue: TranscriptionQueue?
     private var writer: TranscriptWriter?
+    var audioLevelMonitor: AudioLevelMonitor?
 
     init() {
         checkAccessibility()
 
         micCapture.onAudio = { [weak self] samples in
             self?.micVAD?.feed(samples)
+            self?.audioLevelMonitor?.feedMic(samples)
         }
 
         systemCapture.onAudio = { [weak self] samples in
             self?.meetingVAD?.feed(samples)
+            self?.audioLevelMonitor?.feedSystem(samples)
         }
     }
 
@@ -235,6 +246,7 @@ final class AppState {
                     print("[AppState] System audio unavailable: \(error.localizedDescription)")
                 }
 
+                audioLevelMonitor = AudioLevelMonitor()
                 isRecording = true
                 isMuted = false
                 micCapture.muted = false
@@ -290,6 +302,7 @@ final class AppState {
             _ = currentQueue // keep alive until finalized
         }
 
+        audioLevelMonitor = nil
         isRecording = false
         isSpeechDetected = false
         isMuted = false

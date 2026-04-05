@@ -6,7 +6,5 @@
 	<string>D Scribe needs microphone access to transcribe your voice.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>D Scribe needs to capture system audio to transcribe meeting participants.</string>
-	<key>LSUIElement</key>
-	<true/>
 </dict>
 </plist>

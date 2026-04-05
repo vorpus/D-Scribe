@@ -33,7 +33,7 @@ struct TranscriptContentView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(displayLines) { line in
-                        TranscriptLineRow(line: line)
+                        TranscriptLineRow(line: line, fontSize: appState.transcriptFontSize)
                             .id(line.id)
                     }
                 }
@@ -43,6 +43,11 @@ struct TranscriptContentView: View {
                 Color.clear
                     .frame(height: 0)
                     .id("bottom")
+            }
+            .safeAreaInset(edge: .bottom) {
+                RecordingBar(appState: appState)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
             }
             .modifier(ScrollBottomDetector(isAtBottom: $isAtBottom))
             .onChange(of: appState.lineCount) { _, _ in
@@ -120,18 +125,21 @@ struct ScrollBottomDetector: ViewModifier {
 
 struct TranscriptLineRow: View {
     let line: TranscriptLine
+    var fontSize: CGFloat = 13
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Text("[\(line.timeString)]")
-                .font(.system(.body, design: .monospaced))
+                .font(.system(size: fontSize, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             Text(line.label + ":")
+                .font(.system(size: fontSize))
                 .fontWeight(.semibold)
                 .foregroundStyle(line.label == "YOU" ? .red : .green)
 
             Text(line.text)
+                .font(.system(size: fontSize))
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)
         }
