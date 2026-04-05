@@ -20,6 +20,11 @@ struct TranscriptContentView: View {
         if isActiveFile {
             return appState.transcriptLines
         }
+        // After stopping, transcriptLines may still have the session's lines
+        // while diskLines hasn't loaded yet — show whichever is non-empty.
+        if diskLines.isEmpty && !appState.transcriptLines.isEmpty && appState.activeRecordingFile == nil {
+            return appState.transcriptLines
+        }
         return diskLines
     }
 
@@ -44,6 +49,14 @@ struct TranscriptContentView: View {
                 if isAtBottom, isActiveFile {
                     withAnimation(.easeOut(duration: 0.15)) {
                         proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
+            .onChange(of: appState.activeRecordingFile) { _, _ in
+                // Recording stopped — reload from disk after writer finalizes.
+                if !isActiveFile {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        loadFromDisk(for: file)
                     }
                 }
             }

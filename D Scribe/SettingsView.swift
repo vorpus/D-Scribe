@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Bindable var appState: AppState
 
     @State private var pollingTask: Task<Void, Never>?
+    @State private var outputDirDraft = ""
 
     var body: some View {
         Form {
@@ -38,10 +39,7 @@ struct SettingsView: View {
             }
 
             Section("Transcription") {
-                Picker("Language", selection: Binding(
-                    get: { appState.language },
-                    set: { appState.language = $0 }
-                )) {
+                Picker("Language", selection: $appState.language) {
                     Text("English").tag("en")
                     Text("Chinese").tag("zh")
                     Text("Japanese").tag("ja")
@@ -51,16 +49,38 @@ struct SettingsView: View {
                     Text("German").tag("de")
                 }
 
-                TextField("Output", text: Binding(
-                    get: { appState.outputDirectory },
-                    set: { appState.outputDirectory = $0 }
-                ))
+                LabeledContent("Output") {
+                    HStack {
+                        TextField("~/transcripts", text: $outputDirDraft)
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { commitOutputDir() }
+
+                        Button("Browse") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            panel.canCreateDirectories = true
+                            panel.directoryURL = URL(fileURLWithPath: (outputDirDraft as NSString).expandingTildeInPath)
+                            if panel.runModal() == .OK, let url = panel.url {
+                                outputDirDraft = url.path
+                                commitOutputDir()
+                            }
+                        }
+
+                        Button {
+                            let path = (appState.outputDirectory as NSString).expandingTildeInPath
+                            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .help("Open in Finder")
+                    }
+                }
 
                 HStack {
-                    Slider(value: Binding(
-                        get: { appState.vadThreshold },
-                        set: { appState.vadThreshold = $0 }
-                    ), in: 0.1...0.95, step: 0.05)
+                    Slider(value: $appState.vadThreshold, in: 0.1...0.95, step: 0.05)
                     Text(String(format: "%.2f", appState.vadThreshold))
                         .monospacedDigit()
                         .frame(width: 40)
@@ -82,6 +102,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 450)
         .onAppear {
+            outputDirDraft = appState.outputDirectory
             appState.checkAllPermissions()
             pollingTask = Task { @MainActor in
                 while !Task.isCancelled {
@@ -91,9 +112,24 @@ struct SettingsView: View {
             }
         }
         .onDisappear {
+            commitOutputDir()
             pollingTask?.cancel()
             pollingTask = nil
         }
+    }
+
+    private func commitOutputDir() {
+        let trimmed = outputDirDraft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        appState.outputDirectory = trimmed
+
+        // Ensure the directory exists.
+        let path = (trimmed as NSString).expandingTildeInPath
+        try? FileManager.default.createDirectory(
+            atPath: path,
+            withIntermediateDirectories: true
+        )
+        appState.refreshFileList()
     }
 }
 

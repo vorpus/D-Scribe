@@ -66,6 +66,7 @@ struct SidebarRow: View {
 
     @State private var isEditing = false
     @State private var editName = ""
+    @State private var showDeleteConfirmation = false
     @FocusState private var isFieldFocused: Bool
 
     private var displayName: String {
@@ -98,6 +99,10 @@ struct SidebarRow: View {
             }
         }
         .contextMenu {
+            Button("Open") {
+                NSWorkspace.shared.open(file)
+            }
+
             Button("Rename") {
                 editName = displayName
                 isEditing = true
@@ -111,9 +116,22 @@ struct SidebarRow: View {
             Divider()
 
             Button("Delete", role: .destructive) {
-                onDelete()
+                showDeleteConfirmation = true
             }
             .disabled(isActive)
+        }
+        .onDeleteCommand {
+            guard !isActive else { return }
+            showDeleteConfirmation = true
+        }
+        .confirmationDialog(
+            "Move \"\(displayName)\" to Trash?",
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button("Move to Trash", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
         }
     }
 

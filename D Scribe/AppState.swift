@@ -50,26 +50,22 @@ final class AppState {
     /// The file currently being recorded to (nil when not recording)
     var activeRecordingFile: URL?
 
-    // MARK: - Settings (persisted via UserDefaults)
+    // MARK: - Settings (stored properties synced to UserDefaults)
 
-    var language: String {
-        get { UserDefaults.standard.string(forKey: "language") ?? "en" }
-        set { UserDefaults.standard.set(newValue, forKey: "language") }
+    var language: String = UserDefaults.standard.string(forKey: "language") ?? "en" {
+        didSet { UserDefaults.standard.set(language, forKey: "language") }
     }
 
-    var outputDirectory: String {
-        get { UserDefaults.standard.string(forKey: "outputDirectory") ?? "~/transcripts" }
-        set { UserDefaults.standard.set(newValue, forKey: "outputDirectory") }
+    var outputDirectory: String = UserDefaults.standard.string(forKey: "outputDirectory") ?? "~/transcripts" {
+        didSet { UserDefaults.standard.set(outputDirectory, forKey: "outputDirectory") }
     }
 
-    var vadThreshold: Float {
-        get { UserDefaults.standard.object(forKey: "vadThreshold") as? Float ?? 0.5 }
-        set { UserDefaults.standard.set(newValue, forKey: "vadThreshold") }
+    var vadThreshold: Float = UserDefaults.standard.object(forKey: "vadThreshold") as? Float ?? 0.5 {
+        didSet { UserDefaults.standard.set(vadThreshold, forKey: "vadThreshold") }
     }
 
-    var silenceMs: Int {
-        get { UserDefaults.standard.object(forKey: "silenceMs") as? Int ?? 800 }
-        set { UserDefaults.standard.set(newValue, forKey: "silenceMs") }
+    var silenceMs: Int = UserDefaults.standard.object(forKey: "silenceMs") as? Int ?? 800 {
+        didSet { UserDefaults.standard.set(silenceMs, forKey: "silenceMs") }
     }
 
     // MARK: - Private
@@ -276,10 +272,19 @@ final class AppState {
             // Wait for any in-flight transcriptions to finish.
             try? await Task.sleep(for: .seconds(1))
             await MainActor.run {
-                currentWriter?.finalize()
-                let path = currentWriter?.outputPath.path ?? ""
-                let count = currentWriter?.lineCount ?? 0
-                print("[AppState] Saved to \(path) — \(count) lines")
+                if let w = currentWriter {
+                    if w.lineCount > 0 {
+                        w.finalize()
+                        print("[AppState] Saved to \(w.outputPath.path) — \(w.lineCount) lines")
+                    } else {
+                        // Empty transcript — delete the file.
+                        try? FileManager.default.removeItem(at: w.outputPath)
+                        print("[AppState] Empty transcript discarded")
+                        if selectedFile == w.outputPath {
+                            selectedFile = nil
+                        }
+                    }
+                }
                 refreshFileList()
             }
             _ = currentQueue // keep alive until finalized
