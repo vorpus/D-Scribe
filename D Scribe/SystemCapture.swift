@@ -235,7 +235,7 @@ final class SystemCapture: @unchecked Sendable {
             sampleCounter -= 16_000
             var maxVal: Float = 0
             vDSP_maxmgv(resampled, 1, &maxVal, vDSP_Length(resampled.count))
-            print(String(format: "[SystemCapture] 1s of system audio — %d samples, peak=%.6f", outputCount, maxVal))
+            if ENABLE_AUDIO_CONSOLE { print(String(format: "[SystemCapture] 1s of system audio — %d samples, peak=%.6f", outputCount, maxVal)) }
         }
 
         onAudio?(resampled)

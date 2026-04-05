@@ -10,10 +10,12 @@ import Observation
 @Observable
 @MainActor
 final class AudioLevelMonitor {
-    var micLevels: [Float] = []
-    var systemLevels: [Float] = []
+    private static let bufferSize = 50
 
-    private let bufferSize = 50
+    var micLevels: [Float] = Array(repeating: 0, count: bufferSize)
+    var systemLevels: [Float] = Array(repeating: 0, count: bufferSize)
+
+    private let bufferSize = AudioLevelMonitor.bufferSize
     /// Amplitude ceiling for normalization — signals above this clip to 1.0.
     private let ceiling: Float = 0.3
 

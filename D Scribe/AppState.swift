@@ -11,6 +11,9 @@ import AVFoundation
 import Foundation
 import Observation
 
+/// Set to `true` to enable periodic audio capture logging (sample counts, peaks, VAD events).
+let ENABLE_AUDIO_CONSOLE = false
+
 struct TranscriptLine: Identifiable {
     let id = UUID()
     let label: String

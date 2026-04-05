@@ -113,7 +113,7 @@ final class MicCapture: @unchecked Sendable {
         tapCallbackCount += frameLength
         if tapCallbackCount >= 16_000 {
             tapCallbackCount -= 16_000
-            print("[MicCapture] 1s of audio captured — \(frameLength) frames this buffer, format: \(targetFormat.sampleRate) Hz")
+            if ENABLE_AUDIO_CONSOLE { print("[MicCapture] 1s of audio captured — \(frameLength) frames this buffer, format: \(targetFormat.sampleRate) Hz") }
         }
 
         onAudio?(samples)

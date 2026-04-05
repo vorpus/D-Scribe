@@ -143,6 +143,18 @@ MVP target: feature parity with the Python CLI (`scribe/transcribe.py`). Dual-ch
 
 ---
 
+## Auto-scroll behavior (active transcript)
+
+When viewing the transcript currently being recorded:
+
+1. **Content shorter than viewport**: always auto-scroll to bottom on new lines (including the transition where a new line causes content to exceed the viewport for the first time).
+2. **Content taller than viewport, user is at/near bottom**: auto-scroll to bottom on new lines. "Near bottom" = within ~80pt of the maximum scroll offset.
+3. **Content taller than viewport, user has scrolled up**: do NOT auto-scroll. The user is reading history — don't yank them away.
+
+The scroll-to-bottom uses `ScrollViewReader.scrollTo("bottom")`. Bottom detection uses `onScrollGeometryChange`: if `contentSize <= containerSize` the content hasn't filled the viewport yet (case 1, always true). Otherwise compare `contentOffset.y` against `contentSize.height - containerSize.height` with a tolerance buffer (case 2 vs 3).
+
+---
+
 ## Architecture Summary
 
 ```

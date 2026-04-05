@@ -150,7 +150,7 @@ final class VADChannel: @unchecked Sendable {
         isSpeaking = true
         speechBuffer = samples
         speechSampleCount = samples.count
-        print("[VAD:\(label)] Speech started")
+        if ENABLE_AUDIO_CONSOLE { print("[VAD:\(label)] Speech started") }
         DispatchQueue.main.async { self.onSpeechStart?() }
     }
 
@@ -158,7 +158,7 @@ final class VADChannel: @unchecked Sendable {
         guard isSpeaking else { return }
         isSpeaking = false
         let duration = Float(speechSampleCount) / 16_000.0
-        print(String(format: "[VAD:%@] Speech ended — %.1fs, %d samples", label, duration, speechSampleCount))
+        if ENABLE_AUDIO_CONSOLE { print(String(format: "[VAD:%@] Speech ended — %.1fs, %d samples", label, duration, speechSampleCount)) }
         let buffer = speechBuffer
         DispatchQueue.main.async { self.onSpeechEnd?(buffer) }
         speechBuffer.removeAll(keepingCapacity: true)
@@ -175,8 +175,8 @@ final class VADChannel: @unchecked Sendable {
         let flushBuffer = speechBuffer
         let overlap = Array(speechBuffer[(totalSamples - overlapCount)...])
 
-        print(String(format: "[VAD:%@] Force flush at %.1fs — keeping %.1fs overlap",
-                      label, durationSeconds, Float(overlapCount) / 16_000.0))
+        if ENABLE_AUDIO_CONSOLE { print(String(format: "[VAD:%@] Force flush at %.1fs — keeping %.1fs overlap",
+                      label, durationSeconds, Float(overlapCount) / 16_000.0)) }
 
         DispatchQueue.main.async { self.onSpeechEnd?(flushBuffer) }
 
@@ -189,8 +189,8 @@ final class VADChannel: @unchecked Sendable {
     func flushRemaining() {
         guard isSpeaking, !speechBuffer.isEmpty else { return }
         let duration = Float(speechSampleCount) / 16_000.0
-        print(String(format: "[VAD:%@] Flushing remaining speech — %.1fs, %d samples",
-                      label, duration, speechSampleCount))
+        if ENABLE_AUDIO_CONSOLE { print(String(format: "[VAD:%@] Flushing remaining speech — %.1fs, %d samples",
+                      label, duration, speechSampleCount)) }
         let buffer = speechBuffer
         onSpeechEnd?(buffer)
         speechBuffer.removeAll()
